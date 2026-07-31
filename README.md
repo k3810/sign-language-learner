@@ -53,3 +53,37 @@ python vlm_server.py
 
 # 4. 통합 키오스크 런처 실행 (NPU 백그라운드 서버 & GUI 자동 동시 기동)
 bash run_kiosk.sh
+
+##5. AI 사용 내역
+본 프로젝트는 시스템의 완성도를 높이고 코드 구현 및 최적화를 위해 다음과 같은 AI 기술을 적극 활용했습니다.
+
+* **Google Gemini AI:** 프론트엔드 GUI(a.py), NPU 백엔드 서버(vlm_server.py), 데이터 구축 스튜디오(truth_studio.py), 통합 런처 등 본 프로젝트를 구성하는 모든 핵심 소스 코드의 작성, 디버깅, 아키텍처 설계에 Google Gemini AI를 적극 활용했습니다.
+
+* **MediaPipe (Google):** 영상에서 사용자의 손가락과 신체 관절의 3D 좌표를 실시간으로 추적하는 데 사용했습니다.
+
+* **Qwen2-VL-2B (Alibaba Cloud):** '연습 모드'에서 사용자의 수어 자세 이미지를 정밀 분석하기 위해 라즈베리파이 NPU(Hailo) 위에서 온디바이스로 구동했습니다.
+
+* **Qwen2.5:3b (Alibaba Cloud):** '자율 모드'와 'AI 대화 모드'에서 대화형 피드백 문장을 생성하기 위해 노트북 로컬 서버 환경에서 구동했습니다.
+
+##6. 라이선스
+MIT License
+
+Copyright (c) 2026 k3810
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
