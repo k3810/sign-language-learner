@@ -1,4 +1,4 @@
-# 🤟 하이브리드 산업 안전 수어 교육 키오스크 (Customizable Edge-AI Sign Language Learner)
+# 하이브리드 산업 안전 수어 교육 키오스크 (Customizable Edge-AI Sign Language Learner)
 
 **'전국마이스터고 스타프로젝트 AI Competition' 출품작**  
 본 프로젝트는 청각장애인과 건청인이 함께 안전하게 소통하며 일할 수 있도록 돕는 실시간 수어 학습 기기입니다. 엣지 컴퓨팅(Edge Computing)과 로컬 AI 서버를 결합하여, 학교 실습실이나 산업 현장에 당장 필요한 '맞춤형 안전 수어'를 관리자가 직접 3D 뼈대 데이터로 추가하고 학생들이 즉각적인 AI 피드백을 받으며 배울 수 있도록 개발되었습니다.
@@ -29,7 +29,7 @@
   5. **자율 모드:** 자유로운 수어 동작을 인식해 로컬 LLM이 다정한 문장으로 번역.
   6. **AI와 대화:** STT(음성 인식)와 카메라를 융합하여 AI 어시스턴트와 심화 학습 진행.
 
-## 3. 사용 스택
+## 3. 사용스택
 
 * **Hardware:** Raspberry Pi 5 (8GB), Hailo-10H AI HAT, USB 웹캠, 로컬 서버용 노트북
 * **Software (GUI & Logic):** Python 3, PyQt5, OpenCV, NumPy (가상 키보드용 커스텀 한글 오토마타 자체 개발)
@@ -54,7 +54,8 @@ python vlm_server.py
 # 4. 통합 키오스크 런처 실행 (NPU 백그라운드 서버 & GUI 자동 동시 기동)
 bash run_kiosk.sh
 
-##5. AI 사용 내역
+## 5. AI 사용 내역
+
 본 프로젝트는 시스템의 완성도를 높이고 코드 구현 및 최적화를 위해 다음과 같은 AI 기술을 적극 활용했습니다.
 
 * **Google Gemini AI:** 프론트엔드 GUI(a.py), NPU 백엔드 서버(vlm_server.py), 데이터 구축 스튜디오(truth_studio.py), 통합 런처 등 본 프로젝트를 구성하는 모든 핵심 소스 코드의 작성, 디버깅, 아키텍처 설계에 Google Gemini AI를 적극 활용했습니다.
@@ -65,7 +66,8 @@ bash run_kiosk.sh
 
 * **Qwen2.5:3b (Alibaba Cloud):** '자율 모드'와 'AI 대화 모드'에서 대화형 피드백 문장을 생성하기 위해 노트북 로컬 서버 환경에서 구동했습니다.
 
-##6. 라이선스
+## 6. 라이선스
+
 MIT License
 
 Copyright (c) 2026 k3810
