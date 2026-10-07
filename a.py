@@ -51,7 +51,7 @@ mp_holistic = mp.solutions.holistic
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QTabWidget, QLabel, 
-                             QListWidget, QProgressBar, QStackedWidget, QSizePolicy, QDialog, QGridLayout, QMessageBox, QTextEdit, QLineEdit, QMenu, QAction)
+                             QListWidget, QProgressBar, QStackedWidget, QSizePolicy, QDialog, QGridLayout, QMessageBox, QTextEdit, QLineEdit, QMenu, QAction, QComboBox)
 from PyQt5.QtCore import Qt, QUrl, QTimer, QProcess
 from PyQt5.QtGui import QPixmap, QImage, QFontDatabase, QFont
 
@@ -202,14 +202,15 @@ class LocalHailoVLM:
         self.model_loaded = True
         self.api_url = "http://127.0.0.1:5000/generate"
         
-    def generate_advanced(self, request_type, target_word="", correct_description="", dtw_semantic="", dtw_score=0, image=None, prompt_text=""):
+    def generate_advanced(self, request_type, target_word="", correct_description="", dtw_semantic="", dtw_score=0, image=None, prompt_text="", target_lang="한국어"):
         payload = {
             'request_type': request_type,
             'target_word': target_word,
             'correct_description': correct_description,
             'dtw_semantic_analysis': dtw_semantic,
             'dtw_score': dtw_score,
-            'prompt': prompt_text
+            'prompt': prompt_text,
+            'target_lang': target_lang # 💡 서버로 다국어 파라미터 전송
         }
         
         if image is not None and request_type == "practice":
@@ -276,13 +277,17 @@ class SignLanguageApp(QMainWindow):
         self.resize(1024, 600)
         self.showFullScreen()
         
-        self.holistic = mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        # 💡 [다국어 지원]
+        self.current_lang = "한국어" 
+        self.category_data = {}      
+        
+        self.holistic = mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.7)
         self.mp_drawing = mp.solutions.drawing_utils
         self.base_path = "/home/a/Sign_Kiosk/media/수어 영상 mp4"
         self.default_expert_img_path = "/home/a/Sign_Kiosk/media/전문가 시연 이미지.png"
         self.json_model_path = "/home/a/Sign_Kiosk/dynamic_sign_model.json"
-        
         self.json_desc_path = "/home/a/Sign_Kiosk/dynamic_sign_desc.json"
+        self.json_category_path = "/home/a/Sign_Kiosk/dynamic_sign_category.json"
         
         self.app_started = False  
         self.initial_load = True
@@ -348,11 +353,22 @@ class SignLanguageApp(QMainWindow):
             
         self.words = list(self.word_data.keys())
         if os.path.exists(self.json_model_path):
-            with open(self.json_model_path, 'r', encoding='utf-8') as f:
-                raw_json = json.load(f)
-                for k, v in raw_json.items():
-                    res = self.resample_sequence(v, 30)
-                    if res is not None: self.expert_data[k] = res.tolist()
+            try:
+                with open(self.json_model_path, 'r', encoding='utf-8') as f:
+                    raw_json = json.load(f)
+                    for k, v in raw_json.items():
+                        v_arr = np.array(v)
+                        templates = []
+                        if len(v_arr.shape) == 2:
+                            res = self.resample_sequence(v, 30)
+                            if res is not None: templates.append(res.tolist())
+                        elif len(v_arr.shape) == 3:
+                            for single_v in v:
+                                res = self.resample_sequence(single_v, 30)
+                                if res is not None: templates.append(res.tolist())
+                        if templates:
+                            self.expert_data[k] = templates
+            except Exception: pass
 
         self.root_stack = QStackedWidget()
         self.setCentralWidget(self.root_stack)
@@ -384,15 +400,31 @@ class SignLanguageApp(QMainWindow):
         self.main_app_widget.setStyleSheet("background-color: #1e1e1e;")
         layout = QVBoxLayout(self.main_app_widget)
 
+        # 💡 [다국어 지원 UI]: 언어 선택 드롭다운 버튼 추가
         top_bar = QHBoxLayout()
-        self.btn_stop_audio_global = QPushButton("⏹️ 음성 종료"); self.btn_home = QPushButton("처음으로"); self.btn_window = QPushButton("창 모드"); self.btn_fullscreen = QPushButton("전체화면"); self.btn_exit = QPushButton("종료하기")
+        self.btn_stop_audio_global = QPushButton("⏹️ 음성 종료")
+        self.btn_home = QPushButton("처음으로")
+        self.btn_window = QPushButton("창 모드")
+        self.btn_fullscreen = QPushButton("전체화면")
+        self.btn_exit = QPushButton("종료하기")
+        
+        self.cb_lang = QComboBox()
+        self.cb_lang.addItems(["한국어", "베트남어", "태국어", "필리핀어", "English"])
+        self.cb_lang.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px; font-size: 16px; font-weight: bold; border-radius: 5px;")
+        self.cb_lang.currentTextChanged.connect(self.change_language)
+
         btn_style = "background-color: #008CBA; color: white; padding: 8px 15px; font-size: 14px; font-weight: bold; border-radius: 5px;"
         self.btn_stop_audio_global.setStyleSheet("background-color: #9C27B0; color: white; padding: 8px 15px; font-size: 14px; font-weight: bold; border-radius: 5px;")
         self.btn_home.setStyleSheet(btn_style); self.btn_window.setStyleSheet(btn_style); self.btn_fullscreen.setStyleSheet(btn_style)
         self.btn_exit.setStyleSheet("background-color: #f44336; color: white; padding: 8px 15px; font-size: 14px; font-weight: bold; border-radius: 5px;" )
         
-        self.btn_stop_audio_global.clicked.connect(self.stop_tts_audio); self.btn_home.clicked.connect(self.return_to_intro); self.btn_window.clicked.connect(self.showNormal); self.btn_fullscreen.clicked.connect(self.showFullScreen); self.btn_exit.clicked.connect(self.close_app)
-        top_bar.addStretch(); top_bar.addWidget(self.btn_stop_audio_global); top_bar.addWidget(self.btn_home); top_bar.addWidget(self.btn_window); top_bar.addWidget(self.btn_fullscreen); top_bar.addWidget(self.btn_exit)
+        self.btn_stop_audio_global.clicked.connect(self.stop_tts_audio); self.btn_home.clicked.connect(self.return_to_intro); self.btn_window.clicked.connect(self.showNormal); self.btn_fullscreen.clicked.connect(self.showFullScreen)
+        # 💡 [버그 픽스]: 1-Click 안전 강제 종료
+        self.btn_exit.clicked.connect(self.close_app)
+        
+        top_bar.addStretch()
+        top_bar.addWidget(self.cb_lang) # 드롭다운 삽입
+        top_bar.addWidget(self.btn_stop_audio_global); top_bar.addWidget(self.btn_home); top_bar.addWidget(self.btn_window); top_bar.addWidget(self.btn_fullscreen); top_bar.addWidget(self.btn_exit)
         layout.addLayout(top_bar)
 
         self.tabs = QTabWidget(); self.tabs.setUsesScrollButtons(False)
@@ -410,7 +442,18 @@ class SignLanguageApp(QMainWindow):
         self.speed_timer = QTimer(); self.speed_timer.timeout.connect(self.update_speed_timer)
         self.speed_time_left = 50 
 
+    def change_language(self, lang):
+        self.current_lang = lang
+        t_log("사용자조작", f"출력 언어가 [{lang}]로 변경되었습니다.")
+
     def load_dynamic_descriptions(self):
+        # 💡 [카테고리 연동]
+        if os.path.exists(self.json_category_path):
+            try:
+                with open(self.json_category_path, 'r', encoding='utf-8') as f:
+                    self.category_data = json.load(f)
+            except Exception: pass
+            
         txt_path = os.path.join(self.base_path, "수형설명.txt")
         if os.path.exists(txt_path):
             try:
@@ -446,14 +489,16 @@ class SignLanguageApp(QMainWindow):
 
     def init_camera(self):
         if self.cap is not None and self.cap.isOpened(): return
-        for i in range(4):
-            cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
-            if cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640); cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480); cap.set(cv2.CAP_PROP_FPS, 30)
-                ret, _ = cap.read()
-                if ret: self.cap = cap; break
+        for backend in [cv2.CAP_ANY, cv2.CAP_V4L2]:
+            if self.cap is not None: break
+            for i in range(3):
+                cap = cv2.VideoCapture(i, backend)
+                if cap.isOpened():
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640); cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480); cap.set(cv2.CAP_PROP_FPS, 30)
+                    ret, _ = cap.read()
+                    if ret: self.cap = cap; break
+                    else: cap.release()
                 else: cap.release()
-            else: cap.release()
 
     def return_to_intro(self):
         t_log("사용자조작", "'처음으로' 버튼이 클릭되었습니다.")
@@ -475,12 +520,20 @@ class SignLanguageApp(QMainWindow):
                             self.words.append(k)
                             if k not in self.word_data:
                                 self.word_data[k] = "학습자가 정답지 스튜디오를 통해 새롭게 추가한 수어입니다."
-                        res = self.resample_sequence(v, 30)
-                        if res is not None: self.expert_data[k] = res.tolist()
-                self.learn_list.blockSignals(True); self.practice_list.blockSignals(True)
-                self.learn_list.clear(); self.practice_list.clear()
-                self.learn_list.addItems(self.words); self.practice_list.addItems(self.words)
-                self.learn_list.blockSignals(False); self.practice_list.blockSignals(False)
+                        v_arr = np.array(v)
+                        templates = []
+                        if len(v_arr.shape) == 2:
+                            res = self.resample_sequence(v, 30)
+                            if res is not None: templates.append(res.tolist())
+                        elif len(v_arr.shape) == 3:
+                            for single_v in v:
+                                res = self.resample_sequence(single_v, 30)
+                                if res is not None: templates.append(res.tolist())
+                        if templates:
+                            self.expert_data[k] = templates
+                            
+                self.filter_word_list(self.learn_list, "all")
+                self.filter_word_list(self.practice_list, "all")
             except Exception: pass
 
     def launch_truth_studio(self):
@@ -497,8 +550,6 @@ class SignLanguageApp(QMainWindow):
         self.reload_dynamic_data()
         if self.app_started: self.init_camera()
         
-    def close_app(self): self.close()
-
     def enter_main_app(self):
         t_log("사용자조작", "'시작하기' 버튼이 클릭되었습니다. 메인 앱으로 진입합니다.")
         self.init_camera()
@@ -565,7 +616,6 @@ class SignLanguageApp(QMainWindow):
         self.chat_kbd = VirtualHangulKeyboard(None)
         
         self.chat_input = HangulLineEdit(self.chat_kbd, enter_callback=self.send_text_chat)
-        # 💡 [버그 해결] 타겟 연결 복구!
         self.chat_kbd.target = self.chat_input
         self.chat_input.setPlaceholderText("터치하여 텍스트 입력 (또는 VNC 키보드, 마이크 사용)")
         self.chat_input.setFixedHeight(45); self.chat_input.setReadOnly(False) 
@@ -726,11 +776,9 @@ class SignLanguageApp(QMainWindow):
 
     def process_gigong_chat(self, user_text, gigong_top3=None):
         if not user_text and not gigong_top3: return
-        
         self.is_ai_thinking = True
         
-        if user_text: 
-            self.append_chat_log("사용자", user_text)
+        if user_text: self.append_chat_log("사용자", user_text)
             
         if self.is_mic_listening:
             self.btn_gigong_mic.setText("⏳ AI 분석 중...")
@@ -762,11 +810,11 @@ class SignLanguageApp(QMainWindow):
                     image=None,
                     target_word=best_match,
                     dtw_score=best_score,
-                    dtw_semantic=dtw_semantic
+                    dtw_semantic=dtw_semantic,
+                    target_lang=getattr(self, 'current_lang', '한국어') 
                 )
                 clean_feedback = feedback.replace("[번역 결과]", "").replace("[판단 근거]", "").replace("[상세 분석]", "").strip()
                 if not clean_feedback: clean_feedback = "방금 하신 말씀을 명확히 이해하지 못했습니다. 다시 한 번 말씀해 주시겠습니까?"
-                
                 self.ui_queue.put(("gigong_answer", clean_feedback))
             except Exception as e:
                 t_log("AI통신", f"노트북 서버 통신 에러 발생: {e}")
@@ -830,44 +878,50 @@ class SignLanguageApp(QMainWindow):
         else: self.speak_text(word)
 
     def speak_text(self, text):
-        if not TTS_READY: 
-            self.is_ai_thinking = False 
-            return
-            
-        self.stop_tts_audio() 
-        def run_tts():
-            try:
-                temp_file = '/tmp/sign_chat_tts.mp3'
-                safe_text = text.replace('"', '').replace("'", "").replace('\n', ' ').strip()
-                EDGE_TTS_BIN = "/home/a/miniforge3/envs/hailo10_env/bin/edge-tts"
-                result = subprocess.run([EDGE_TTS_BIN, '--voice', 'ko-KR-SunHiNeural', '--text', safe_text, '--write-media', temp_file], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                if result.returncode != 0:
-                    tts = gTTS(text=safe_text, lang='ko'); tts.save(temp_file)
-                
-                self.audio_process = subprocess.Popen(['cvlc', '--play-and-exit', '--no-video', temp_file], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                self.audio_process.wait() 
-                
-                self.is_ai_thinking = False
-                if self.is_mic_listening:
-                    self.ui_queue.put(("mic_resume", ""))
-                    
-            except Exception as e: 
-                t_log("음성에러", f"TTS 생성 실패: {e}")
-                self.is_ai_thinking = False
-                
-        threading.Thread(target=run_tts, daemon=True).start()
+        pass # VLM 서버에서 전담하므로 클라이언트 로컬 TTS는 비워둡니다
 
+    # 💡 [필터 패치] 일반 / 산업 수어 필터링 탭 구성
     def create_word_selection_panel(self, list_widget):
         panel = QVBoxLayout()
         lbl_category = QLabel("학습 단어 목록")
         lbl_category.setStyleSheet("font-size: 20px; font-weight: bold; color: #4CAF50;")
-        list_widget.setFixedWidth(220)
-        list_widget.addItems(self.words)
+        
+        cat_layout = QHBoxLayout()
+        btn_all = QPushButton("전체")
+        btn_gen = QPushButton("일상")
+        btn_ind = QPushButton("산업")
+        
+        style = "background-color: #555; color: white; padding: 5px; font-weight: bold; border-radius: 3px;"
+        btn_all.setStyleSheet(style); btn_gen.setStyleSheet(style); btn_ind.setStyleSheet(style)
+        
+        cat_layout.addWidget(btn_all)
+        cat_layout.addWidget(btn_gen)
+        cat_layout.addWidget(btn_ind)
+        
+        btn_all.clicked.connect(lambda: self.filter_word_list(list_widget, "all"))
+        btn_gen.clicked.connect(lambda: self.filter_word_list(list_widget, "general"))
+        btn_ind.clicked.connect(lambda: self.filter_word_list(list_widget, "industry"))
+        
+        list_widget.setFixedWidth(240)
         list_widget.setVerticalScrollMode(QListWidget.ScrollPerPixel)
         list_widget.itemClicked.connect(self.on_item_clicked)
         list_widget.currentRowChanged.connect(self.change_word_by_index)
-        panel.addWidget(lbl_category); panel.addWidget(list_widget)
+        
+        panel.addWidget(lbl_category)
+        panel.addLayout(cat_layout)
+        panel.addWidget(list_widget)
+        
+        self.filter_word_list(list_widget, "all")
         return panel
+
+    def filter_word_list(self, list_widget, category):
+        list_widget.blockSignals(True)
+        list_widget.clear()
+        for w in self.words:
+            cat = self.category_data.get(w, "general") 
+            if category == "all" or cat == category:
+                list_widget.addItem(w)
+        list_widget.blockSignals(False)
 
     def on_tab_changed(self, index):
         tab_names = ["학습 모드", "연습 모드", "확인 모드", "자율 모드", "AI와 대화"]
@@ -900,8 +954,10 @@ class SignLanguageApp(QMainWindow):
         else: self.change_word(word)
 
     def change_word_by_index(self, index):
-        if index < 0 or index >= len(self.words): return
-        self.change_word(self.words[index])
+        list_widget = self.learn_list if self.tabs.currentIndex() == 0 else self.practice_list
+        item = list_widget.item(index)
+        if item:
+            self.change_word(item.text())
 
     def change_word(self, word):
         self.stop_tts_audio() 
@@ -1168,7 +1224,9 @@ class SignLanguageApp(QMainWindow):
 
     def next_action_question(self):
         if self.quiz_type != "survival" and self.quiz_current_q > 5: return self.show_quiz_result()
-        self.quiz_target_word = random.choice(self.words)
+        available_words = [self.learn_list.item(i).text() for i in range(self.learn_list.count())]
+        if not available_words: available_words = self.words
+        self.quiz_target_word = random.choice(available_words)
         title = f"실전 동작 퀴즈 (문제 {self.quiz_current_q}/5)" if self.quiz_type == "action" else f"🔠 초성 동작 퀴즈 (문제 {self.quiz_current_q}/5)" if self.quiz_type == "initial" else f"💀 서바이벌 모드 (현재 {self.quiz_correct_count}연속 성공 중)"
         target_text = f"초성: [{get_chosung(self.quiz_target_word)}]" if self.quiz_type == "initial" else f"제시어: [{self.quiz_target_word}]"
         self.lbl_quiz_title_act.setText(title); self.lbl_quiz_target_act.setText(target_text)
@@ -1190,8 +1248,10 @@ class SignLanguageApp(QMainWindow):
 
     def next_mc_question(self):
         if self.quiz_current_q > 5: return self.show_quiz_result()
-        self.quiz_target_word = random.choice(self.words)
-        choices = random.sample([w for w in self.words if w != self.quiz_target_word], 3) + [self.quiz_target_word]; random.shuffle(choices)
+        available_words = [self.learn_list.item(i).text() for i in range(self.learn_list.count())]
+        if len(available_words) < 4: available_words = self.words
+        self.quiz_target_word = random.choice(available_words)
+        choices = random.sample([w for w in available_words if w != self.quiz_target_word], 3) + [self.quiz_target_word]; random.shuffle(choices)
         self.mc_current_choices = choices
         if self.quiz_type == "reverse":
             self.lbl_quiz_title_mc.setText(f"거꾸로 설명 맞추기 (문제 {self.quiz_current_q}/5)")
@@ -1221,7 +1281,7 @@ class SignLanguageApp(QMainWindow):
         selected_word = self.mc_current_choices[btn_idx]; font_size = "16px" if self.quiz_type == "reverse" else "24px"
         for btn in self.btn_mc_choices: btn.setEnabled(False)
         if selected_word == self.quiz_target_word:
-            self.play_sound_effect("정답"); self.quiz_correct_count += 1
+            self.play_sound_effect("정답"); self.quiz_correctcount += 1
             self.btn_mc_choices[btn_idx].setStyleSheet(f"background-color: #4CAF50; color: white; font-size: {font_size}; font-weight: bold; padding: 20px; border-radius: 10px; text-align: left; padding-left: 30px;")
         else:
             self.play_sound_effect("오답"); self.btn_mc_choices[btn_idx].setStyleSheet(f"background-color: #f44336; color: white; font-size: {font_size}; font-weight: bold; padding: 20px; border-radius: 10px; text-align: left; padding-left: 30px;")
@@ -1232,10 +1292,7 @@ class SignLanguageApp(QMainWindow):
     def show_quiz_result(self): self.play_sound_effect("종료"); QuizResultDialog(self.quiz_correct_count, float('inf') if self.quiz_type == "survival" else 5, self).exec_(); self.test_stack.setCurrentIndex(0)
 
     def start_recording(self, mode):
-        t_log("사용자조작", f"녹화 시작 버튼이 클릭되었습니다. (모드: {mode})")
-        
         self.stop_tts_audio()
-        
         self.analysis_mode, self.is_counting_down, self.countdown_start_time = mode, True, time.time()
         self.last_pose, self.last_lh, self.last_rh, self.last_rel, self.last_rel_head, self.last_torso = [0.0]*12, [0.0]*15, [0.0]*15, [0.0]*9, [0.0]*6, [0.0]*18
         if mode in ["practice", "auto", "gigong"]: self.play_sound_effect("안내멘트")
@@ -1311,29 +1368,38 @@ class SignLanguageApp(QMainWindow):
             if np.mean(np.std(np.array(user_seq), axis=0)) < 0.015: return [("손 동작 없음", 0), ("-", 0), ("-", 0)]
             norm_user = self.resample_sequence(self.trim_active_sequence(user_seq), 30)
             if norm_user is None: return [("데이터 규격 불일치", 0), ("-", 0), ("-", 0)]
-            results = sorted([(w, int(max(0, min(100, 100 - (max(0, self.compute_universal_dtw(norm_user, self.expert_data[w]) - 3.5) * 4.0)))), self.compute_universal_dtw(norm_user, self.expert_data[w])) for w in self.words if self.expert_data.get(w)], key=lambda x: x[1], reverse=True)
+            results_raw = []
+            available_words = [self.learn_list.item(i).text() for i in range(self.learn_list.count())]
+            if not available_words: available_words = self.words
+            for w in available_words:
+                templates = self.expert_data.get(w)
+                if templates:
+                    if isinstance(templates, list) and len(templates) > 0 and isinstance(templates[0], list):
+                        min_dist = float('inf')
+                        for t in templates:
+                            dist = self.compute_universal_dtw(norm_user, t)
+                            if dist < min_dist: min_dist = dist
+                        score = int(max(0, min(100, 100 - (max(0, min_dist - 3.5) * 4.0))))
+                        results_raw.append((w, score, min_dist))
+                    else:
+                        dist = self.compute_universal_dtw(norm_user, templates)
+                        score = int(max(0, min(100, 100 - (max(0, dist - 3.5) * 4.0))))
+                        results_raw.append((w, score, dist))
+            results = sorted([(w, score) for w, score, dist in results_raw], key=lambda x: x[1], reverse=True)
             return [(r[0], r[1]) for r in (results + [("알 수 없음", 0, 0)] * 3)[:3]]
         except Exception: return [("연산 오류", 0), ("-", 0), ("-", 0)]
 
     def process_hybrid_analysis(self, user_seq=None, vision_frame=None):
         if user_seq is None: user_seq = list(self.pose_buffer)
         top3 = self.evaluate_motion_locally(user_seq)
-        
-        t_log("NPU판독", f"결과 ➡️ 1순위: {top3[0][0]}({top3[0][1]}점), 2순위: {top3[1][0]}({top3[1][1]}점), 3순위: {top3[2][0]}({top3[2][1]}점)")
-        
-        if self.analysis_mode == "gigong":
-            return self.ui_queue.put(("gigong_motion_done", top3))
-            
+        if self.analysis_mode == "gigong": return self.ui_queue.put(("gigong_motion_done", top3))
         self.ui_queue.put(("local", top3, self.analysis_mode))
         best_match, best_score = top3[0]
         if best_match in ["손 동작 없음", "동작 대기 중...", "데이터 규격 불일치", "연산 오류"] or best_score < 20: 
             return self.ui_queue.put(("ai", "수어 동작이 명확하지 않거나 감지되지 않았습니다. 카메라 앞에서 크고 정확하게 다시 동작을 취해주세요.", top3, self.analysis_mode))
-        
         if self.analysis_mode in ["action", "initial", "survival", "quiz_act"]: 
             self.ui_queue.put(("ai", "로컬 채점 완료", top3, self.analysis_mode))
-            
         elif self.analysis_mode in ["auto", "practice"]: 
-            t_log("AI통신", f"노트북 AI({self.analysis_mode} 모드)에게 번역/대화 응답을 요청합니다.")
             feedback, _, _ = self.request_vlm_feedback(top3, self.analysis_mode, vision_frame, user_seq)
             self.ui_queue.put(("ai", feedback, top3, self.analysis_mode))
 
@@ -1347,37 +1413,24 @@ class SignLanguageApp(QMainWindow):
     def request_vlm_feedback(self, top3, mode, vision_frame=None, user_seq=None):
         best_match, best_score = top3[0]
         target_score = best_score if mode != "practice" else next((score for w, score in top3 if w == self.current_target_word), 0)
-        
-        if mode == "auto":
-            dtw_semantic = f"1순위: '{top3[0][0]}'({top3[0][1]}점), 2순위: '{top3[1][0]}'({top3[1][1]}점), 3순위: '{top3[2][0]}'({top3[2][1]}점)."
+        if mode == "auto": dtw_semantic = f"1순위: '{top3[0][0]}'({top3[0][1]}점), 2순위: '{top3[1][0]}'({top3[1][1]}점), 3순위: '{top3[2][0]}'({top3[2][1]}점)."
         else:
             if target_score >= 80: dtw_semantic = f"'{best_match}' 동작을 훌륭하게 수행하고 있습니다."
             elif target_score >= 40: dtw_semantic = f"'{best_match}' 동작의 방향성은 맞으나 손의 위치나 각도가 약간 어색합니다."
             else: dtw_semantic = "의미를 알 수 없는 다른 동작을 하고 있습니다."
-
         target_word = self.current_target_word if mode == "practice" else best_match
         desc = self.word_data.get(target_word, '')
-
         try:
             img_to_send = PILImage.fromarray(vision_frame) if vision_frame is not None and PILLOW_READY and mode == "practice" else None
-            feedback = local_vlm_model.generate_advanced(
-                request_type=mode,
-                target_word=target_word,
-                correct_description=desc,
-                dtw_semantic=dtw_semantic,
-                dtw_score=target_score,
-                image=img_to_send
-            )
-        except Exception as e:
-            t_log("에러", f"AI 통신 에러: {e}")
-            feedback = "[시스템 에러] 통신 에러로 피드백을 생성할 수 없습니다."
+            feedback = local_vlm_model.generate_advanced(request_type=mode, target_word=target_word, correct_description=desc, dtw_semantic=dtw_semantic, dtw_score=target_score, image=img_to_send, target_lang=getattr(self, 'current_lang', '한국어'))
+        except Exception as e: feedback = "[시스템 에러] 통신 에러로 피드백을 생성할 수 없습니다."
         return feedback, best_match, best_score
 
     def update_ui_ai_feedback(self, feedback, top3, mode):
         best_match, best_score = top3[0]
         if mode == "practice":
             self.btn_check_motion.setEnabled(True); target_score = next((score for w, score in top3 if w == self.current_target_word), 0)
-            self.practice_progress.setFormat(f"최종 정확도: {target_score}점"); self.practice_progress.setValue(target_score); self.lbl_practice_ai_feedback.setText(f"{feedback}"); self.speak_text(feedback.replace("[AI 어시스턴트 피드백]", ""))
+            self.practice_progress.setFormat(f"최종 정확도: {target_score}점"); self.practice_progress.setValue(target_score); self.lbl_practice_ai_feedback.setText(f"{feedback}")
         elif mode in ["action", "initial", "survival", "quiz_act"]: 
             if best_match == self.quiz_target_word and best_score >= 60: self.play_sound_effect("정답"); self.quiz_correct_count += 1; self.lbl_quiz_target_act.setText(f"[ 정답! ] (판독: {best_score}점)"); self.lbl_quiz_target_act.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background-color: #4CAF50; padding: 20px; border-radius: 15px;")
             else: self.play_sound_effect("오답"); self.lbl_quiz_target_act.setText(f"[ 오답 ] (내 동작: {best_match} / {best_score}점)"); self.lbl_quiz_target_act.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background-color: #FF5722; padding: 20px; border-radius: 15px;")
@@ -1386,7 +1439,6 @@ class SignLanguageApp(QMainWindow):
         elif mode == "auto":
             self.btn_auto_scan.setEnabled(True); self.btn_auto_scan.setText("동작 2초 녹화 후 초고속 AI 번역"); self.btn_auto_scan.setStyleSheet("background-color: #4CAF50; color: white; font-size: 22px; font-weight: bold; padding: 15px; border-radius: 8px;")
             self.lbl_auto_result.setText(f"[판독 취소]\n{feedback}" if "명확하지 않거나" in feedback or "감지되지 않았습니다" in feedback else f"{feedback}")
-            self.speak_text(feedback if "명확하지 않거나" in feedback or "감지되지 않았습니다" in feedback else feedback.split("번역 결과]")[1].split("[판단 근거]")[0].strip() if "[번역 결과]" in feedback else feedback)
 
     def update_camera_frame(self):
         if self.root_stack.currentIndex() == 0: return
@@ -1398,16 +1450,10 @@ class SignLanguageApp(QMainWindow):
                 elif msg[0] == "gigong_mic_success": self.process_gigong_chat(msg[1])
                 elif msg[0] == "mic_status_update":
                     if self.is_mic_listening and not self.is_ai_thinking: self.btn_gigong_mic.setText(msg[1])
-                elif msg[0] == "gigong_answer": 
-                    self.append_chat_log("🤖 AI 어시스턴트", msg[1])
-                    self.speak_text(msg[1])
+                elif msg[0] == "gigong_answer": self.append_chat_log("🤖 AI 어시스턴트", msg[1])
                 elif msg[0] == "gigong_motion_done":
                     self.btn_gigong_record.setEnabled(True); self.btn_gigong_record.setText("⏺️ 동작 2초 녹화 전송")
                     self.process_gigong_chat("", gigong_top3=msg[1])
-                elif msg[0] == "mic_resume":
-                    if self.is_mic_listening:
-                        self.btn_gigong_mic.setText("⏹️ 연속 듣기 끄기")
-                        self.btn_gigong_mic.setStyleSheet("background-color: #f44336; color: white; font-size: 20px; font-weight: bold; padding: 15px; border-radius: 10px;")
             except Exception: pass
 
         if getattr(self, 'is_processing_frame', False): return
@@ -1487,6 +1533,13 @@ class SignLanguageApp(QMainWindow):
             QScrollBar:vertical { background: #2b2b2b; width: 15px; border-radius: 5px; }
             QScrollBar::handle:vertical { background: #555; border-radius: 5px; }
         """)
+
+    # 💡 [핵심 패치]: 1-Click 안전 강제 종료 이식
+    def close_app(self):
+        t_log("시스템", "메인 앱 강제 종료 호출")
+        self.timer.stop()
+        if self.cap: self.cap.release()
+        os._exit(0)
 
     def closeEvent(self, event):
         t_log("시스템", "==================================================")
